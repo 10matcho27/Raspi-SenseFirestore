@@ -8,7 +8,7 @@ import smbus
 import datetime
 
 def firebase_init():
-    cred = credentials.Certificate("firebase-adminsdk.json")
+    cred = credentials.Certificate("/home/pi/Desktop/Firebase/firebase-adminsdk.json")
     firebase_admin.initialize_app(cred)
     db = firestore.client()
     return db
@@ -49,6 +49,7 @@ def bme680_init():
 
 def TSL2572_init():
     i2c = smbus.SMBus(1)
+    time.sleep(1)
     #TSL2572 Register Set
     TSL2572_ADR      = 0x39
     TSL2572_COMMAND  = 0x80
@@ -168,7 +169,7 @@ if __name__ == '__main__':
         # print(time.strftime('%Y,%m,%d,%H:%M:%S'))
         doc_name = firebase_push_data(db, output, doc_name)
         push_count = push_count + 1
-        if(push_count > 150):
+        if(push_count > 100):
             push_count = firebase_del_doc(db, push_count, ["BME680", "TSL2572"], doc_name.pop(0))
         sum_data = list(map(sum, zip(sum_data, output)))
         loop_num += 1
