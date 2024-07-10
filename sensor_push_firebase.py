@@ -7,10 +7,23 @@ import time
 import smbus
 import datetime
 
+def delete_collection(coll_ref, batch_size):
+    docs = coll_ref.list_documents(page_size=batch_size)
+    deleted = 0
+    for doc in docs:
+        print(f"Deleting doc {doc.id} => {doc.get().to_dict()}")
+        doc.delete()
+        deleted = deleted + 1
+    if deleted >= batch_size:
+        return delete_collection(coll_ref, batch_size)
+
 def firebase_init():
     cred = credentials.Certificate("/home/pi/Desktop/Firebase/firebase-adminsdk.json")
     firebase_admin.initialize_app(cred)
     db = firestore.client()
+    ## Delete some collection items to prevent heavy trafic on out server 
+    res_del_bme = delete_collection(db.collection("BME680"), 1000)
+    res_del_tsl = delete_collection(db.collection("TSL2572"), 1000)
     return db
 
 def bme680_init():
@@ -135,18 +148,14 @@ def firebase_push_data(db, output, doc_name):
     doc_ref_tsl = db.collection("TSL2572").document(dt)
     doc_ref_tsl.set({"Lux": {output[3]}, "Timestamp": firestore.SERVER_TIMESTAMP})
     doc_name.append(dt)
-    # print(dt)
-    # print(doc_name)
-
     return doc_name
 
-def firebase_del_doc(db, count, col_name, name):
-    count = count - 1
+def firebase_del_doc(db, col_name, name):
     for col in col_name:
         res_del = db.collection(col).document(name).delete()
     # res_del_bme = db.collection("BME680").document(name).delete()
     # res_del_tsl = db.collection("TSL2572").document(name).delete()
-    return count
+    return res_del
 
 def firebase_push_data_daily_ave(db, output, dt):
     doc_ref = db.collection(str(dt.month)).document(str(dt.day))
@@ -161,6 +170,8 @@ if __name__ == '__main__':
     sum_data = [0, 0, 0, 0]
     loop_num = 0
     prev_day = datetime.datetime.now()
+    hold_data_num = 150
+    pop_flag = False
     
     while(True): #main loop
         output = getBME680adc(sensor)
@@ -168,9 +179,13 @@ if __name__ == '__main__':
         print("Now: " + str(output))
         # print(time.strftime('%Y,%m,%d,%H:%M:%S'))
         doc_name = firebase_push_data(db, output, doc_name)
-        push_count = (push_count) % 100 + 1
-        if(push_count == 100):
-            push_count = firebase_del_doc(db, push_count, ["BME680", "TSL2572"], doc_name.pop(0))
+        if (push_count < hold_data_num):
+            push_count = push_count + 1
+        else:
+            #if the number of iteration exceed hold_data_num once, pop_flag will be True till end 
+            pop_flag = True
+        if(pop_flag):
+            print(firebase_del_doc(db, ["BME680", "TSL2572"], doc_name.pop(0)))
         sum_data = list(map(sum, zip(sum_data, output)))
         loop_num += 1
         print("Today's current average: " + str(list(map(lambda x: x / loop_num, sum_data))))
@@ -178,10 +193,12 @@ if __name__ == '__main__':
             firebase_push_data_daily_ave(db, list(map(lambda x: x / loop_num, sum_data)), prev_day)
             sum_data = [0, 0, 0, 0]
             loop_num = 0
-        if(push_count % 100 == 99):
+        if(push_count % (hold_data_num + 2) == hold_data_num + 1):
             prev_day = datetime.datetime.now()
             values, commands = TSL2572_init()
-        time.sleep(30)
+            sensor = bme680_init()
+            push_count = 0
+        time.sleep(45)
         # store about 2h's data [(48sec * 150times) / (3600sec/1h) = 2h]
         # store about 2h's data [(30sec * 100times) / (3600sec/1h) = 2h]
     
