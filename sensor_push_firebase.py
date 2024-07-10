@@ -168,8 +168,8 @@ if __name__ == '__main__':
         print("Now: " + str(output))
         # print(time.strftime('%Y,%m,%d,%H:%M:%S'))
         doc_name = firebase_push_data(db, output, doc_name)
-        push_count = push_count + 1
-        if(push_count > 100):
+        push_count = (push_count) % 100 + 1
+        if(push_count == 100):
             push_count = firebase_del_doc(db, push_count, ["BME680", "TSL2572"], doc_name.pop(0))
         sum_data = list(map(sum, zip(sum_data, output)))
         loop_num += 1
@@ -178,8 +178,12 @@ if __name__ == '__main__':
             firebase_push_data_daily_ave(db, list(map(lambda x: x / loop_num, sum_data)), prev_day)
             sum_data = [0, 0, 0, 0]
             loop_num = 0
+        if(push_count % 100 == 99):
             prev_day = datetime.datetime.now()
-        time.sleep(48) # store about 2h's data [(48sec * 150times) / (3600sec/1h) = 2h]
+            values, commands = TSL2572_init()
+        time.sleep(30)
+        # store about 2h's data [(48sec * 150times) / (3600sec/1h) = 2h]
+        # store about 2h's data [(30sec * 100times) / (3600sec/1h) = 2h]
     
 
 #https://firebase.google.com/docs/database/admin/save-data?hl=ja
